@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pixel Pipeline</title>
+<style>
+:root {
+  --paper: #dcdcd7;      /* e-paper grey: page */
+  --sheet: #f4f4f1;      /* panels */
+  --ink: #000000;        /* palette 0 */
+  --dark: #555555;       /* palette 1 */
+  --light: #aaaaaa;      /* palette 2 */
+  --white: #ffffff;      /* palette 3 */
+  --key: #ff00ff;        /* transparent / key / overlays */
+  --warn-bg: #fff3c4;
+  --fail-bg: #ffd9e0;
+  --radius: 6px;
+  --gap: 12px;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", "Noto Sans Thai", "Helvetica Neue", Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--paper); color: var(--ink); font: 14px/1.45 var(--sans); }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--key); outline-offset: 2px; }
+
+.app { display: grid; grid-template-columns: 300px minmax(0, 1fr) 472px; grid-template-rows: auto minmax(0, 1fr) auto; height: 100vh; }
+header { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 2px solid var(--ink); background: var(--white); }
+header h1 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: 0; }
+header .file { color: var(--dark); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+header .cfg { color: var(--dark); font-size: 12px; }
+
+.controls { overflow-y: auto; padding: var(--gap); border-right: 1px solid var(--light); background: var(--sheet); }
+.controls section { padding: 10px 0 14px; border-bottom: 1px solid var(--light); }
+.controls section:last-child { border-bottom: 0; }
+.controls h2 { font-size: 13px; margin: 0 0 8px; display: flex; align-items: baseline; gap: 6px; }
+.controls h2 .step { display: inline-grid; place-items: center; width: 18px; height: 18px; background: var(--ink); color: var(--white); border-radius: 3px; font-size: 11px; }
+.row { display: flex; align-items: center; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
+.row label { min-width: 70px; color: var(--dark); }
+.row.pair input[type=number] { width: 72px; }
+.row.pair label + input + label { min-width: auto; }
+.row input[type=number] { width: 76px; padding: 3px 6px; border: 1px solid var(--light); border-radius: 4px; background: var(--white); font-variant-numeric: tabular-nums; }
+.row input[type=text], .row select { flex: 1; min-width: 0; padding: 3px 6px; border: 1px solid var(--light); border-radius: 4px; background: var(--white); }
+.row input[type=range] { flex: 1; accent-color: var(--ink); }
+.row output { width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+.swatch { width: 22px; height: 22px; border: 1px solid var(--ink); border-radius: 3px; }
+.hint { color: var(--dark); font-size: 12px; margin: 4px 0 0; }
+.btn { padding: 4px 10px; border: 1px solid var(--ink); border-radius: 4px; background: var(--white); cursor: pointer; }
+.btn:hover { background: var(--paper); }
+.btn[aria-pressed=true] { background: var(--ink); color: var(--white); }
+.btn.primary { background: var(--ink); color: var(--white); }
+.btn.primary:hover { background: var(--dark); }
+.seg { display: inline-flex; }
+.seg .btn { border-radius: 0; margin-left: -1px; }
+.seg .btn:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+.seg .btn:last-child { border-radius: 0 4px 4px 0; }
+canvas.hist { width: 100%; height: 44px; display: block; background: var(--white); border: 1px solid var(--light); border-radius: 4px; }
+
+.stage { position: relative; overflow: hidden; background:
+  repeating-conic-gradient(#cfcfca 0 25%, #e4e4df 0 50%) 0 0 / 16px 16px; }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+.stage .empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; color: var(--dark); }
+.stage .empty strong { display: block; color: var(--ink); font-size: 16px; margin-bottom: 4px; }
+.stage .toolbar { position: absolute; left: 12px; top: 12px; display: flex; gap: 6px; z-index: 2; }
+.stage .zoom { position: absolute; right: 12px; top: 12px; z-index: 2; background: var(--white); border: 1px solid var(--ink); border-radius: 4px; padding: 2px 8px; font-variant-numeric: tabular-nums; }
+.stage.drop { outline: 3px dashed var(--key); outline-offset: -8px; }
+
+.right { overflow-y: auto; padding: var(--gap); border-left: 1px solid var(--light); background: var(--sheet); display: flex; flex-direction: column; gap: 16px; }
+.right h2 { font-size: 13px; margin: 0 0 8px; }
+.sprite-view { display: flex; gap: 12px; align-items: flex-start; }
+.sprite-view canvas { image-rendering: pixelated; border: 1px solid var(--ink); background: var(--white); }
+.legend { font-size: 12px; color: var(--dark); display: grid; gap: 4px; }
+.legend i { display: inline-block; width: 12px; height: 12px; border: 1px solid var(--ink); vertical-align: -2px; margin-right: 4px; }
+.legend .box { border: 1px dashed var(--key); }
+
+/* CoreInk bezel: the one memorable object on the page */
+.device { width: 440px; padding: 18px 18px 50px; background: #e9e9e4; border: 2px solid var(--ink); border-radius: 22px; box-shadow: inset 0 -6px 0 #c9c9c3; position: relative; }
+.device canvas { display: block; width: 400px; height: 400px; image-rendering: pixelated; border: 2px solid var(--dark); border-radius: 4px; }
+.device .buttons { position: absolute; left: 0; right: 0; bottom: 14px; display: flex; justify-content: center; gap: 18px; }
+.device .buttons span { width: 44px; height: 14px; border: 2px solid var(--ink); border-radius: 7px; background: var(--white); }
+.preview-controls { display: grid; gap: 8px; }
+
+.group-panel { display: none; padding-bottom: 12px; border-bottom: 1px solid var(--light); }
+body.server-mode .group-panel { display: block; }
+.gbtns { gap: 6px; }
+dialog { border: 2px solid var(--ink); border-radius: 8px; padding: 16px 18px; max-width: 460px; background: var(--white); }
+dialog::backdrop { background: rgba(0,0,0,.35); }
+dialog p { margin: 0 0 14px; line-height: 1.5; }
+.dlg-actions { display: flex; justify-content: flex-end; gap: 8px; }
+/* Clean Editor (FR-17) */
+body.editor-mode .conv-controls, body:not(.editor-mode) .ed-controls { display: none; }
+body.editor-mode #srcCanvas, body.editor-mode #ovCanvas, body.editor-mode #emptyMsg, body.editor-mode #zoomLabel { display: none !important; }
+.editor { position: absolute; inset: 0; display: none; grid-template-rows: auto minmax(0, 1fr) auto; background: var(--paper); }
+body.editor-mode .editor { display: grid; }
+.ed-banner { margin: 10px 12px 0; padding: 8px 10px; border: 1px solid var(--ink); border-radius: 4px; background: var(--warn-bg); }
+.ed-canvas-wrap { overflow: auto; display: grid; place-items: center; padding: 16px; }
+.stage .editor canvas { position: static; inset: auto; }
+#edCanvas { image-rendering: pixelated; border: 1px solid var(--ink); cursor: crosshair; touch-action: none; }
+.timeline { border-top: 2px solid var(--ink); background: var(--white); padding: 8px 12px; display: grid; gap: 8px; }
+.timeline .row { margin: 0; }
+.frames { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; min-height: 92px; align-items: flex-start; }
+.thumb { display: grid; gap: 2px; justify-items: center; padding: 4px; border: 1px solid var(--light); border-radius: 4px; background: var(--white); cursor: pointer; font-size: 11px; font-variant-numeric: tabular-nums; }
+.thumb canvas { width: 64px; height: 64px; image-rendering: pixelated; background: repeating-conic-gradient(#cfcfca 0 25%, #e4e4df 0 50%) 0 0 / 8px 8px; }
+.thumb[aria-pressed=true] { border: 2px solid var(--ink); padding: 3px; }
+.palette { display: flex; gap: 6px; }
+.palette .sw { width: 30px; height: 30px; padding: 0; }
+.palette .sw[aria-pressed=true] { outline: 3px solid var(--key); outline-offset: 1px; }
+.palette .sw.clear { background: repeating-conic-gradient(#cfcfca 0 25%, #fff 0 50%) 0 0 / 10px 10px; }
+.kbd { font-family: var(--mono); font-size: 11px; color: var(--dark); }
+.target { font-size: 12px; color: var(--dark); white-space: nowrap; }
+.edit-banner { margin: 0 0 8px; padding: 6px 8px; border: 1px solid var(--ink); border-radius: 4px; background: var(--warn-bg); font-size: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.use-row label.u { min-width: auto; display: inline-flex; gap: 3px; align-items: center; margin-right: 8px; color: var(--ink); }
+.units { display: grid; gap: 4px; margin: 6px 0; }
+.units .unit { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 12px; padding: 4px 6px; border: 1px solid var(--light); border-radius: 4px; background: var(--white); }
+.units .unit b { font-variant-numeric: tabular-nums; }
+.units .unit .src { color: var(--dark); flex: 1; min-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rawchg { display: grid; gap: 4px; margin-top: 6px; }
+.rawchg div { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 12px; }
+footer { grid-column: 1 / -1; border-top: 2px solid var(--ink); background: var(--white); padding: 8px 16px; max-height: 22vh; overflow-y: auto; }
+footer ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+footer .msghead { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; }
+footer .msghead button { background: none; border: 0; padding: 2px 4px; font: inherit; font-weight: 600; color: var(--ink); cursor: pointer; }
+footer .msghead button::before { content: '▾ '; }
+footer.collapsed .msghead button::before { content: '▸ '; }
+footer.collapsed .msghead { margin: 0; }
+footer.collapsed ul { display: none; }
+footer .msgcount span { padding: 1px 6px; border-radius: 4px; margin-right: 4px; font-size: 12px; }
+footer .msgcount .fail { background: var(--fail-bg); font-weight: 600; }
+footer .msgcount .warn { background: var(--warn-bg); }
+footer li { padding: 3px 8px; border-radius: 4px; }
+footer li.warn { background: var(--warn-bg); }
+footer li.fail { background: var(--fail-bg); font-weight: 600; }
+footer li.ok { color: var(--dark); }
+
+@media (max-width: 1100px) {
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto 60vh auto auto; height: auto; }
+  header { flex-wrap: wrap; gap: 8px 12px; }
+  header .file { flex-basis: 100%; order: 5; }
+  .controls, .right { border: 0; }
+  .stage { min-height: 60vh; }
+  .device { width: min(440px, 100%); } .device canvas { width: 100%; height: auto; }
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Pixel Pipeline</h1>
+    <div class="file" id="fileLabel">No source loaded</div>
+    <button class="btn" id="openBtn">Open source…</button>
+    <input type="file" id="fileInput" accept="image/png,image/jpeg" hidden>
+    <button class="btn" id="groupBtn" title="Load a batch file with its sidecars and sources to preview the real group placement">Load group…</button>
+    <input type="file" id="groupInput" multiple accept=".json,image/png" hidden>
+    <button class="btn" id="exportBtn" disabled>Export fragment</button>
+    <button class="btn primary" id="addBtn" disabled hidden title="Archive, add, rebuild and promote this unit">Add to group</button>
+    <span class="target" id="addTarget" hidden></span>
+    <span class="seg"><button class="btn" id="viewConv" aria-pressed="true">Converter</button><button class="btn" id="viewEdit" aria-pressed="false" title="Edit clean frames">Clean Editor</button></span>
+    <span class="cfg"><span id="modeLabel">Preview only (file)</span> · <span id="cfgLabel"></span></span>
+  </header>
+
+  <aside class="controls ed-controls" aria-label="Clean Editor tools">
+    <section>
+      <h2>Clean Editor</h2>
+      <div class="row"><strong id="edGroup">—</strong></div>
+      <div class="row"><button class="btn primary" id="edSave">Save</button><button class="btn" id="edReload" title="Discard unsaved changes and load the files from disk">Reload</button></div>
+      <p class="hint" id="edSaveHint"></p>
+    </section>
+    <section>
+      <h2>Palette</h2>
+      <div class="palette" id="edPalette"></div>
+      <p class="hint"><span class="kbd">1–4</span> colours, <span class="kbd">5</span> transparent</p>
+    </section>
+    <section>
+      <h2>Tools</h2>
+      <div class="row"><span class="seg"><button class="btn" id="edPencil" aria-pressed="true">Pencil <span class="kbd">B</span></button><button class="btn" id="edEraser" aria-pressed="false">Eraser <span class="kbd">E</span></button></span></div>
+      <div class="row"><span class="seg"><button class="btn" id="edFill" aria-pressed="false">Fill <span class="kbd">G</span></button><button class="btn" id="edPick" aria-pressed="false">Pick <span class="kbd">I</span></button></span></div>
+      <div class="row"><label for="edMirror">Mirror X</label><input type="checkbox" id="edMirror"><button class="btn" id="edFlip">Flip frame</button></div>
+      <div class="row"><label>Shift</label><button class="btn" id="edL1" aria-label="Shift left">←</button><button class="btn" id="edUp" aria-label="Shift up">↑</button><button class="btn" id="edDown" aria-label="Shift down">↓</button><button class="btn" id="edR1" aria-label="Shift right">→</button></div>
+      <p class="hint">Arrow keys shift the frame 1 px; Shift + arrows shift every frame of the animation.</p>
+      <div class="row"><button class="btn" id="edUndo">Undo</button><button class="btn" id="edRedo">Redo</button><span class="kbd">⌘Z · ⌘⇧Z · Ctrl+Y</span></div>
+    </section>
+    <section>
+      <h2>View</h2>
+      <div class="row"><label for="edZoom">Zoom</label><input type="range" id="edZoom" min="6" max="12" value="8"><output id="edZoomOut"></output></div>
+      <div class="row"><label for="edGrid">Pixel grid</label><input type="checkbox" id="edGrid" checked></div>
+      <div class="row"><label for="edBox">Stage box</label><input type="checkbox" id="edBox" checked></div>
+      <div class="row"><label>Onion skin</label><label style="min-width:auto"><input type="checkbox" id="edOnionPrev"> previous</label><label style="min-width:auto"><input type="checkbox" id="edOnionNext"> next</label></div>
+      <p class="hint" id="edPos"></p>
+    </section>
+  </aside>
+  <aside class="controls conv-controls" aria-label="Processing steps">
+    <section>
+      <h2><span class="step">1</span>Character</h2>
+      <div class="edit-banner" id="editBanner" hidden><span id="editLabel"></span> <button class="btn" id="stopEdit">Stop editing</button></div>
+      <div class="row"><label for="species">Species</label><select id="species"></select></div>
+      <div class="row"><label for="variant">Form</label><select id="variant"><option value="base">Base</option><option value="fat">Fat</option></select></div>
+      <div class="row"><label for="anim">Animation</label><select id="anim"></select></div>
+      <div class="row"><label for="unitId">Unit id</label><input type="text" id="unitId" value="u1" spellcheck="false"></div>
+      <div class="row"><label for="frameStart">First frame</label><input type="number" id="frameStart" min="0" max="99" value="0"></div>
+      <div class="row"><button class="btn" id="settingsFrom" title="Copy key colour, tolerance, grid, tones and toggles from another unit">Use settings from…</button></div>
+    </section>
+    <section>
+      <h2><span class="step">2</span>Background</h2>
+      <div class="row"><label>Key colour</label><span class="swatch" id="keySwatch"></span><button class="btn" id="eyedropBtn" aria-pressed="false">Pick</button><button class="btn" id="autoKeyBtn">Auto</button></div>
+      <div class="row"><label for="tol">Tolerance</label><input type="range" id="tol" min="0" max="200" value="60"><output id="tolOut">60</output></div>
+      <div class="row"><label for="flood">Edge fill</label><input type="checkbox" id="flood" checked><span class="hint">Only remove key colour touching the edge</span></div>
+      <div class="row"><button class="btn" id="roiBtn" aria-pressed="true">Draw region</button><button class="btn" id="roiReset">Whole image</button></div>
+    </section>
+    <section>
+      <h2><span class="step">3</span>Pixel grid</h2>
+      <div class="row"><label>Mode</label><span class="seg"><button class="btn" id="gridAuto" aria-pressed="true">Auto</button><button class="btn" id="gridManual" aria-pressed="false">Manual</button><button class="btn" id="gridFallback" aria-pressed="false">Fallback</button></span></div>
+      <div id="gridFields">
+        <div class="row pair"><label for="px">Period X</label><input type="number" id="px" step="0.01" min="2" max="64"><label for="phx">phase</label><input type="number" id="phx" step="0.1"></div>
+        <div class="row pair"><label for="py">Period Y</label><input type="number" id="py" step="0.01" min="2" max="64"><label for="phy">phase</label><input type="number" id="phy" step="0.1"></div>
+        <div class="row"><label for="snap">Snap lines</label><input type="checkbox" id="snap" checked><span class="hint" id="confLabel"></span></div>
+      </div>
+      <div class="row" id="fallbackRow" hidden><label for="fbh">Height</label><input type="number" id="fbh" min="4" max="62" value="40"><span class="hint">art pixels</span></div>
+    </section>
+    <section>
+      <h2><span class="step">4</span>Tones</h2>
+      <canvas class="hist" id="hist" width="256" height="44"></canvas>
+      <div class="row"><label for="t1">Black | dark</label><input type="range" id="t1" min="0" max="256" value="43"><output id="t1Out">43</output></div>
+      <div class="row"><label for="t2">Dark | light</label><input type="range" id="t2" min="0" max="256" value="128"><output id="t2Out">128</output></div>
+      <div class="row"><label for="t3">Light | white</label><input type="range" id="t3" min="0" max="256" value="213"><output id="t3Out">213</output></div>
+      <div class="row"><button class="btn" id="autoTones">Auto tones</button></div>
+    </section>
+    <section>
+      <h2><span class="step">5</span>Frames</h2>
+      <div class="row"><label for="nFrames">Frames</label><input type="number" id="nFrames" min="1" max="16" value="1"><button class="btn" id="divBtn" aria-pressed="false">Move dividers</button><button class="btn" id="divReset">Even</button></div>
+      <div class="row use-row" id="useRow" hidden><label>Use</label><span id="useBoxes"></span></div>
+      <div class="row"><label for="stray">Remove strays</label><input type="checkbox" id="stray"></div>
+      <div class="row"><label for="outline">Auto outline</label><input type="checkbox" id="outline"></div>
+      <div class="row"><label for="dx">Offset</label><input type="number" id="dx" value="0" aria-label="Offset x"><input type="number" id="dy" value="0" aria-label="Offset y"></div>
+      <p class="hint">Offset nudges this unit within its group, in art pixels.</p>
+    </section>
+  </aside>
+
+  <main class="stage" id="stage">
+    <canvas id="srcCanvas"></canvas>
+    <canvas id="ovCanvas"></canvas>
+    <div class="zoom" id="zoomLabel" hidden></div>
+    <div class="editor" id="editorView">
+      <div class="ed-banner" id="edBanner" hidden></div>
+      <div class="ed-canvas-wrap"><canvas id="edCanvas"></canvas></div>
+      <div class="timeline">
+        <div class="row"><label for="edAnim" style="min-width:auto">Animation</label><select id="edAnim" style="flex:0 1 220px"></select>
+          <button class="btn" id="edDup">Duplicate</button><button class="btn" id="edCopyTo" title="Copy this frame to the start of other animations">Copy to animation…</button><button class="btn" id="edBlank">Add blank</button><button class="btn" id="edDel">Delete</button>
+          <button class="btn" id="edLeft" aria-label="Move frame left">◀ Move</button><button class="btn" id="edRight" aria-label="Move frame right">Move ▶</button></div>
+        <div class="frames" id="edFrames"></div>
+      </div>
+    </div>
+    <div class="empty" id="emptyMsg"><div><strong>Open an archived source to start</strong>Drop a PNG here, or use Open source. Run <code>pixelpipe archive</code> first so the export can reference it.</div></div>
+  </main>
+
+  <aside class="right" aria-label="Results">
+    <div class="group-panel" id="groupPanel">
+      <h2>Group</h2>
+      <div class="row"><select id="groupSel" aria-label="Group"></select></div>
+      <div class="row"><span class="hint" id="groupStatus"></span></div>
+      <div class="rawchg" id="renamePending" hidden></div>
+      <div class="units" id="unitList"></div>
+      <div class="rawchg" id="rawChanged"></div>
+      <div class="row gbtns">
+        <button class="btn" id="gPreview">Preview</button><button class="btn" id="gClean">Edit clean</button>
+        <button class="btn" id="gPromote">Promote</button><button class="btn" id="gRetranslate">Retranslate</button>
+        <button class="btn" id="gValidate">Validate</button><button class="btn primary" id="gExport">Export</button>
+      </div>
+      <div class="row gbtns">
+        <button class="btn" id="gRemoveGroup">Remove group…</button>
+      </div>
+    </div>
+    <div>
+      <h2 id="spriteTitle">Sprite 64 × 64</h2>
+      <div class="sprite-view">
+        <canvas id="spriteCanvas" width="256" height="256" style="width:256px;height:256px"></canvas>
+        <div class="legend">
+          <span><i style="background:#000"></i>Black</span>
+          <span><i style="background:#555"></i>Dark grey</span>
+          <span><i style="background:#aaa"></i>Light grey</span>
+          <span><i style="background:#fff"></i>White</span>
+          <span><i class="box"></i>Stage box</span>
+          <span id="placeInfo"></span>
+        </div>
+      </div>
+    </div>
+    <div>
+      <h2>On the device</h2>
+      <div class="device"><canvas id="einkCanvas" width="200" height="200"></canvas><div class="buttons"><span></span><span></span><span></span></div></div>
+    </div>
+    <div class="preview-controls">
+      <div class="row"><label>Screen</label><span class="seg"><button class="btn" id="modeNormal" aria-pressed="true">Full view</button><button class="btn" id="modeDialog" aria-pressed="false">With dialog</button></span></div>
+      <div class="row"><label>Dither</label><span class="seg"><button class="btn" id="ancCanvas" aria-pressed="true">Canvas</button><button class="btn" id="ancSprite" aria-pressed="false">Sprite</button></span></div>
+      <div class="row"><label>Frame</label><button class="btn" id="prevF" aria-label="Previous frame">‹</button><output id="frameOut" style="width:auto">–</output><button class="btn" id="nextF" aria-label="Next frame">›</button><span class="seg"><button class="btn" id="play1" aria-pressed="false">Play 1 fps</button><button class="btn" id="play2" aria-pressed="false">2 fps</button></span></div>
+    </div>
+  </aside>
+
+  <footer id="msgPanel"><div class="msghead"><button type="button" id="msgToggle" aria-expanded="true" aria-controls="messages">Messages</button><span class="msgcount" id="msgCount"></span></div><ul id="messages"><li class="ok">Messages from each step appear here.</li></ul></footer>
+</div>
+<dialog id="confirmDlg" aria-labelledby="confirmMsg">
+  <p id="confirmMsg"></p>
+  <div class="dlg-actions"><button class="btn" id="confirmCancel">Cancel</button><button class="btn primary" id="confirmOk">Confirm</button></div>
+</dialog>
+<dialog id="choiceDlg" aria-labelledby="choiceMsg">
+  <p id="choiceMsg"></p>
+  <div class="dlg-actions" id="choiceBtns"></div>
+</dialog>
+<dialog id="speciesRnDlg" aria-labelledby="speciesRnTitle">
+  <p id="speciesRnTitle"><strong>Rename a species</strong></p>
+  <div class="row"><label for="rnSpOld">Species</label><select id="rnSpOld"></select></div>
+  <div class="row"><label for="rnSpNew">New id</label><input type="text" id="rnSpNew" spellcheck="false" placeholder="e.g. fluffy"></div>
+  <p class="hint">Every file and reference is renamed; no pixel changes. The export is regenerated with the new names — update the firmware and your project's species list.</p>
+  <p class="hint" id="rnSpErr"></p>
+  <div class="dlg-actions"><button class="btn" id="rnSpCancel">Cancel</button><button class="btn primary" id="rnSpOk">Rename</button></div>
+</dialog>
+<dialog id="speciesRmDlg" aria-labelledby="speciesRmTitle">
+  <p id="speciesRmTitle"><strong>Remove a species</strong></p>
+  <div class="row"><label for="rmSpId">Species</label><select id="rmSpId"></select></div>
+  <p class="hint">Only species without groups are listed. Remove their groups first (Group panel → Remove group…). Leftover files move to art/_removed/.</p>
+  <div class="dlg-actions"><button class="btn" id="rmSpCancel">Cancel</button><button class="btn primary" id="rmSpOk">Remove species</button></div>
+</dialog>
+<dialog id="speciesDlg" aria-labelledby="speciesTitle">
+  <p id="speciesTitle"><strong>New species</strong></p>
+  <div class="row"><label for="newSpId">Id</label><input type="text" id="newSpId" spellcheck="false" placeholder="e.g. fire_egg"></div>
+  <div class="row"><label for="newSpStage">Stage</label><select id="newSpStage"></select></div>
+  <p class="hint">Lowercase a–z, 0–9 and _ ; also record the display name in your project's species list.</p>
+  <p class="hint" id="newSpErr"></p>
+  <div class="dlg-actions"><button class="btn" id="newSpCancel">Cancel</button><button class="btn primary" id="newSpOk">Add species</button></div>
+</dialog>
+<script>window.PP_CONFIG = /*__CONFIG__*/; window.PP_EXAMPLE = /*__EXAMPLE__*/false;
+window.PP_SERVER = /*__SERVER__*/null;</script>
+<script>/*__APP__*/</script>
+</body>
+</html>

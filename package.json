@@ -1,0 +1,27 @@
+{
+  "name": "pixel-pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI concept art to 64x64 4-grey pixel sprites for 1-bit E-Ink: converter, clean editor, validator and exporter",
+  "license": "MIT",
+  "bin": {
+    "pixelpipe": "src/cli/index.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "build:tool": "node src/tool/build.js --example",
+    "serve": "node src/cli/index.js serve"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "fflate": "0.8.3",
+    "jpeg-js": "0.4.4"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.2",
+    "playwright-core": "1.56.1"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "config_version": "3.2.0",
+  "canvas": { "w": 64, "h": 64 },
+  "palette": ["#000000", "#555555", "#AAAAAA", "#FFFFFF"],
+  "transparent": { "index": 4, "rgb": "#FF00FF" },
+  "luma": { "wr": 299, "wg": 587, "wb": 114, "div": 1000, "round": 500 },
+  "baseline_y": 61,
+  "stages": {
+    "0": { "name": "Egg",      "box": [24, 32], "species": ["egg"] },
+    "1": { "name": "Baby",     "box": [32, 32], "species": ["blob"] },
+    "2": { "name": "Teen",     "box": [40, 44], "species": ["pup", "puff"] },
+    "3": { "name": "Champion", "box": [52, 56], "species": ["fox", "hound", "wolf", "drop", "cloud", "slime"] },
+    "4": { "name": "Ultimate", "box": [60, 60], "species": ["monarch", "apex", "eclipse", "bloom", "royal", "cosmic"] }
+  },
+  "fat_stages": [2, 3, 4],
+  "processing": {
+    "min_island_px": 64,
+    "cell_alpha_min": 0.5,
+    "grid_confidence_min": 0.6,
+    "grid_auto_period_range": [4, 64],
+    "auto_merge_luma": 20,
+    "dither_detect_ratio": 0.05,
+    "outline_warn_ratio": 0.10,
+    "key_tolerance_default": 60,
+    "thresholds_default": [43, 128, 213],
+    "max_source_px": 4096
+  },
+  "dither": {
+    "tiles": {
+      "0": [[1, 1], [1, 1]],
+      "1": [[1, 0], [0, 1]],
+      "2": [[1, 0], [0, 0]],
+      "3": [[0, 0], [0, 0]]
+    },
+    "anchor_default": "canvas"
+  },
+  "animations": {
+    "0": { "base": { "idle": [2, 2] } },
+    "1": { "base": { "idle": [2, 2], "happy": [2, 2] } },
+    "2": { "base": { "idle": [2, 4], "walk": [2, 4], "action": [2, 2] }, "fat": { "idle": [2, 2], "walk": [2, 2] } },
+    "3": { "base": { "idle": [2, 4], "walk": [4, 4], "action": [4, 4] }, "fat": { "idle": [2, 2], "walk": [2, 2] } },
+    "4": { "base": { "idle": [4, 4], "walk": [4, 4], "aura": [4, 4], "sleep": [2, 2] }, "fat": { "idle": [2, 2], "walk": [2, 2] } }
+  },
+  "preview": { "sprite_scale": 3, "sprite_offset": [4, 4], "screen": [200, 200], "dialog_height": 36, "fps": [1, 2] }
+}
